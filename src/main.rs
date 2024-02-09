@@ -30,7 +30,11 @@ impl Drop for SignalBlocker {
 
 fn print(message: &str) {
     unsafe {
-        libc::printf(message.as_ptr() as *const _);
+        libc::write(
+            libc::STDERR_FILENO,
+            message.as_ptr() as *const _,
+            message.len(),
+        );
     }
 }
 
@@ -69,7 +73,7 @@ fn new_process_group() {
 #[no_mangle]
 pub extern "C" fn main() -> libc::c_int {
     if my_pid() != 1 {
-        print("E: Not PID 1; exiting!\n");
+        print("E: Not PID 1; exiting!\n\0");
         return libc::EXIT_FAILURE;
     }
 
@@ -78,7 +82,7 @@ pub extern "C" fn main() -> libc::c_int {
         spawn_thread(reap_processes);
     }
     new_process_group();
-    print("This is where I would run my init script, if I had one!\n");
+    print("This is where I would run my init script, if I had one!\0");
     return libc::EXIT_SUCCESS;
 }
 
