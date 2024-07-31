@@ -144,7 +144,7 @@ fn write(fd: i32, buf: *const u8, count: usize) -> isize {
 #[inline(never)]
 pub fn _start(_stack_top: *const u8) -> ! {
     if my_pid() != 1 {
-        print("E: Not PID 1; exiting!\n\0");
+        print("E: Not PID 1; exiting!\n");
         exit(EXIT_FAILURE);
     }
 
@@ -153,7 +153,7 @@ pub fn _start(_stack_top: *const u8) -> ! {
         spawn_thread(reap_processes);
     }
     new_process_group();
-    print("This is where I would run my init script, if I had one!\0");
+    print("This is where I would run my init script, if I had one!");
     exit(EXIT_FAILURE);
 }
 
