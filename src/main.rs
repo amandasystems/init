@@ -1,7 +1,7 @@
 #![no_std]
 #![no_main]
 
-use core::arch::{asm, global_asm};
+use core::arch::asm;
 
 // From the libc crate
 #[repr(C)]
@@ -26,16 +26,11 @@ impl SigSet {
         // libc::sigfillset(&mut set);
     }
 
-
     // SIG_BLOCK is 0x0, SIG_UNBLOCK is 0x01
     // unsafe { libc::sigprocmask(0x0, &self.0, ptr::null_mut()) };
-    fn block(&self) {
+    fn block(&self) {}
 
-    }
-
-    fn unblock(&self) {
-
-    }
+    fn unblock(&self) {}
 }
 
 const STDERR_FILENO: i32 = 2;
@@ -43,7 +38,6 @@ const EXIT_FAILURE: i32 = 1;
 const SYS_LINUX_GETPID: usize = 39;
 
 struct Signals;
-
 
 impl Signals {
     fn block_all() -> SignalBlocker {
@@ -64,7 +58,7 @@ impl Drop for SignalBlocker {
 // CONFIRMED WORKING!!!
 fn my_pid() -> usize {
     let ret;
-    unsafe { 
+    unsafe {
         asm!(
             "syscall",
             inlateout("rax") SYS_LINUX_GETPID => ret,
@@ -72,8 +66,8 @@ fn my_pid() -> usize {
             lateout("r11") _,
             options(nostack, preserves_flags, readonly)
         );
-     }
-     ret
+    }
+    ret
 }
 
 fn wait(status: &mut i32) {
@@ -82,7 +76,7 @@ fn wait(status: &mut i32) {
 
 enum ForkResult {
     Parent,
-    Child(i32)
+    Child(i32),
 }
 
 fn fork() -> ForkResult {
@@ -93,15 +87,13 @@ fn fork() -> ForkResult {
 fn reap_processes() -> ! {
     let mut status = 0;
     loop {
-        unsafe {
-            wait(&mut status);
-        }
+        wait(&mut status);
     }
 }
 
 fn spawn_thread(f: fn() -> !) {
     match fork() {
-        ForkResult::Parent => return,
+        ForkResult::Parent => (),
         ForkResult::Child(_) => f(),
     }
 }
@@ -114,7 +106,6 @@ fn new_process_group() {
 fn print(message: &str) {
     write(STDERR_FILENO, message.as_ptr() as *const _, message.len());
 }
-
 
 fn exit(status: i32) -> ! {
     unsafe {
@@ -151,7 +142,7 @@ fn write(fd: i32, buf: *const u8, count: usize) -> isize {
 // just a bother.
 #[no_mangle]
 #[inline(never)]
-pub fn _start(_stack_top: *const u8) -> ! {    
+pub fn _start(_stack_top: *const u8) -> ! {
     if my_pid() != 1 {
         print("E: Not PID 1; exiting!\n\0");
         exit(EXIT_FAILURE);
@@ -164,7 +155,6 @@ pub fn _start(_stack_top: *const u8) -> ! {
     new_process_group();
     print("This is where I would run my init script, if I had one!\0");
     exit(EXIT_FAILURE);
-    
 }
 
 #[panic_handler]
