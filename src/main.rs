@@ -115,14 +115,6 @@ fn print(message: &str) {
     write(STDERR_FILENO, message.as_ptr() as *const _, message.len());
 }
 
-// FIXME: This should be a linker script I think!
-// Taken from: https://vulns.xyz/2023/03/linux-executable-from-scratch-with-x86_64-unknown-none-rust/
-global_asm! {
-    ".global _start",
-    "_start:",
-    "mov rdi, rsp",
-    "call main"
-}
 
 fn exit(status: i32) -> ! {
     unsafe {
@@ -152,10 +144,14 @@ fn write(fd: i32, buf: *const u8, count: usize) -> isize {
     }
 }
 
+// The name `_start` is magic; Linux uses it as the initial
+// label of execution. I figured I might as well use that one.
+// See so: https://stackoverflow.com/a/67919410.
+// Other names would require linker directives etc etc, and that's
+// just a bother.
 #[no_mangle]
-pub fn main(_stack_top: *const u8) -> ! {
-    print("Hello world\n\0");
-    
+#[inline(never)]
+pub fn _start(_stack_top: *const u8) -> ! {    
     if my_pid() != 1 {
         print("E: Not PID 1; exiting!\n\0");
         exit(EXIT_FAILURE);
