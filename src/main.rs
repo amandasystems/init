@@ -3,56 +3,78 @@
 
 use core::arch::asm;
 
-// From the libc crate
-#[repr(C)]
-struct SigSet {
-    #[cfg(target_pointer_width = "32")]
-    set: [u32; 32],
-    #[cfg(target_pointer_width = "64")]
-    set: [u64; 16],
-}
-
-impl SigSet {
-    fn all_signals() -> Self {
-        // FIXME: this breaks for 32-bit architectures!
-        let mut set = [0; 16];
-        set[0] = 0xfffffffc7fffffff;
-        set[1] = 0xffffffffffffffff;
-        SigSet { set }
-        // https://git.musl-libc.org/cgit/musl/tree/src/signal/sigfillset.c
-        // I think this means we should have 0xfffffffffffffffful, in whatever is the best order.
-        // Do whatever is the default here:
-        // let mut set: sigset_t = MaybeUninit::zeroed().assume_init();
-        // libc::sigfillset(&mut set);
-    }
-
-    // SIG_BLOCK is 0x0, SIG_UNBLOCK is 0x01
-    // unsafe { libc::sigprocmask(0x0, &self.0, ptr::null_mut()) };
-    fn block(&self) {}
-
-    fn unblock(&self) {}
-}
+struct SignalMask(u64);
 
 const STDERR_FILENO: i32 = 2;
 const EXIT_FAILURE: i32 = 1;
 const SYS_LINUX_GETPID: usize = 39;
+const SYS_RT_SIGPROCMASK: usize = 14;
+const ALL_SIGNALS: SignalMask = SignalMask(0xffffffff);
+const SET_SIZE: usize = 0x8;
+const NULL_PTR_AS_USIZE: usize = 0x0;
+
+impl SignalMask {
+    // From: https://stackoverflow.com/questions/34671312/sigprocmask-returns-22-in-assembly
+    fn block(&self) {
+        const SIG_BLOCK: usize = 0x0;
+        unsafe {
+            syscall4(
+                SYS_RT_SIGPROCMASK,
+                SIG_BLOCK,
+                (&self.0 as *const u64) as usize,
+                NULL_PTR_AS_USIZE,
+                SET_SIZE,
+            );
+        }
+    }
+    fn unblock(&self) {
+        const SIG_UNBLOCK: usize = 0x1;
+        unsafe {
+            syscall4(
+                SYS_RT_SIGPROCMASK,
+                SIG_UNBLOCK,
+                (&self.0 as *const u64) as usize,
+                NULL_PTR_AS_USIZE,
+                SET_SIZE,
+            );
+        }
+    }
+}
 
 struct Signals;
 
 impl Signals {
     fn block_all() -> SignalBlocker {
-        let set = SigSet::all_signals();
-        set.block();
-        SignalBlocker(set)
+        ALL_SIGNALS.block();
+        SignalBlocker
     }
 }
 
-struct SignalBlocker(SigSet);
+struct SignalBlocker;
 
 impl Drop for SignalBlocker {
     fn drop(&mut self) {
-        self.0.unblock();
+        print("\nCleanup: unblocking all signals\n");
+        ALL_SIGNALS.unblock();
     }
+}
+
+// From the linux-syscall crate
+pub unsafe fn syscall4(sysno: usize, arg0: usize, arg1: usize, arg2: usize, arg3: usize) -> usize {
+    let ret;
+    asm!(
+        "syscall",
+        inlateout("rax") sysno => ret,
+        in("rdi") arg0,
+        in("rsi") arg1,
+        in("rdx") arg2,
+        in("r10") arg3,
+        lateout("rcx") _,
+        lateout("r11") _,
+        options(nostack, preserves_flags, readonly)
+    );
+    assert!(ret == 0, "Error running syscall!");
+    ret
 }
 
 // CONFIRMED WORKING!!!
@@ -149,7 +171,8 @@ pub fn _start(_stack_top: *const u8) -> ! {
     }
 
     {
-        let _ = Signals::block_all();
+        // This needs a name or we get an early drop!?
+        let _signal_guard = Signals::block_all();
         spawn_thread(reap_processes);
     }
     new_process_group();
